@@ -1,0 +1,99 @@
+-- 1. Bảng Vai trò
+CREATE TABLE roles (
+    role_id INT PRIMARY KEY AUTO_INCREMENT,
+    role_name VARCHAR(50) NOT NULL
+);
+
+-- 2. Bảng Quyền hạn
+CREATE TABLE permissions (
+    permission_id INT PRIMARY KEY AUTO_INCREMENT,
+    permission_name VARCHAR(50) NOT NULL
+);
+
+-- 3. Bảng Người dùng
+CREATE TABLE users (
+    user_id INT PRIMARY KEY AUTO_INCREMENT,
+    username VARCHAR(50) NOT NULL,
+    role_id INT,
+    FOREIGN KEY (role_id) REFERENCES roles(role_id)
+);
+
+-- 4. Bảng trung gian gán Quyền cho Vai trò (Junction Table)
+CREATE TABLE role_permissions (
+    role_id INT,
+    permission_id INT,
+    PRIMARY KEY (role_id, permission_id),
+    FOREIGN KEY (role_id) REFERENCES roles(role_id),
+    FOREIGN KEY (permission_id) REFERENCES permissions(permission_id)
+);
+SELECT p.permission_name 
+FROM users u
+JOIN roles r ON u.role_id = r.role_id
+JOIN role_permissions rp ON r.role_id = rp.role_id
+JOIN permissions p ON rp.permission_id = p.permission_id
+WHERE u.user_id = 1; -- Thay 1 bằng ID của user cần kiểm tra
+<?php
+/**
+ * Lấy danh sách quyền của người dùng từ Database
+ */
+function getUserPermissions($user_id) {
+    // 1. Kết nối Database
+    $host = "localhost";
+    $user = "root";      // Tên đăng nhập DB
+    $pass = "";          // Mật khẩu DB
+    $db   = "my_system"; // Tên database của bạn
+    
+    $conn = mysqli_connect($host, $user, $pass, $db);
+    
+    // Kiểm tra kết nối
+    if (!$conn) {
+        die("Kết nối thất bại: " . mysqli_connect_error());
+    }
+
+    // 2. Câu lệnh SQL truy vấn lồng (JOIN 4 bảng)
+    // Lưu ý: Dùng mysqli_real_escape_string hoặc ép kiểu int để chống SQL Injection
+    $user_id = (int)$user_id; 
+    $sql = "SELECT p.permission_name 
+            FROM users u
+            JOIN roles r ON u.role_id = r.role_id
+            JOIN role_permissions rp ON r.role_id = rp.role_id
+            JOIN permissions p ON rp.permission_id = p.permission_id
+            WHERE u.user_id = $user_id";
+
+    $result = mysqli_query($conn, $sql);
+    $permissions = [];
+
+    // 3. Đưa dữ liệu vào mảng
+    if ($result) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $permissions[] = $row['permission_name'];
+        }
+    }
+
+    // 4. Đóng kết nối
+    mysqli_close($conn);
+
+    return $permissions;
+}
+
+// --- CÁCH SỬ DỤNG THỰC TẾ ---
+session_start();
+$current_user_id = $_SESSION['user_id'] ?? 0;
+
+if ($current_user_id > 0) {
+    // Lấy quyền từ DB và lưu vào session để dùng cho các trang sau (giảm tải cho DB)
+    $_SESSION['user_permissions'] = getUserPermissions($current_user_id);
+}
+
+// Hàm kiểm tra nhanh
+function hasAccess($permission) {
+    return in_array($permission, $_SESSION['user_permissions'] ?? []);
+}
+
+// Ví dụ kiểm tra
+if (hasAccess('delete_user')) {
+    echo "Bạn có quyền xóa!";
+} else {
+    echo "Bạn không đủ quyền hạn.";
+}
+?>
